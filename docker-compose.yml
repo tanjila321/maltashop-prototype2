@@ -1,0 +1,59 @@
+# MaltaShop "place an order" prototype. Start everything with: docker compose up --build
+x-service: &service
+  restart: unless-stopped
+  depends_on:
+    rabbitmq:
+      condition: service_healthy
+  environment: &env
+    AMQP_URL: ${AMQP_URL:-amqp://maltashop:${RABBITMQ_PASSWORD:-maltashop-dev}@rabbitmq:5672/%2F}
+    LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    DB_PATH: /data/service.db
+
+services:
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: maltashop
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-maltashop-dev}
+    ports: ["15672:15672"]   # management UI; AMQP stays on the internal network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    volumes: [rabbitmq-data:/var/lib/rabbitmq]
+
+  order:
+    <<: *service
+    build: ./services/order
+    environment: {<<: *env, SERVICE_NAME: order}
+    ports: ["8000:8000"]
+    volumes: [order-data:/data]
+
+  inventory:
+    <<: *service
+    build: ./services/inventory
+    environment: {<<: *env, SERVICE_NAME: inventory}
+    ports: ["8001:8000"]
+    volumes: [inventory-data:/data]
+
+  payment:
+    <<: *service
+    build: ./services/payment
+    environment: {<<: *env, SERVICE_NAME: payment, PAYMENT_DECLINE_ABOVE_CENTS: "${PAYMENT_DECLINE_ABOVE_CENTS:-500000}"}
+    ports: ["8002:8000"]
+    volumes: [payment-data:/data]
+
+  notification:
+    <<: *service
+    build: ./services/notification
+    environment: {<<: *env, SERVICE_NAME: notification}
+    ports: ["8003:8000"]
+    volumes: [notification-data:/data]
+
+volumes:
+  rabbitmq-data:
+  order-data:
+  inventory-data:
+  payment-data:
+  notification-data:
